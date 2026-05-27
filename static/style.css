@@ -1,0 +1,35 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f4f5f7; color: #1f2937; }
+header { padding: 18px 24px; background: #111827; color: white; }
+h1 { margin: 0; font-size: 22px; }
+header p { margin: 6px 0 0; font-size: 13px; opacity: 0.85; }
+.toolbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: white; border-bottom: 1px solid #d1d5db; box-shadow: 0 2px 8px rgba(0,0,0,0.05); flex-wrap: wrap; }
+button, .fileButton { border: 1px solid #cbd5e1; background: white; color: #111827; border-radius: 8px; padding: 8px 12px; font-size: 14px; cursor: pointer; transition: 0.15s ease; }
+button:hover:not(:disabled), .fileButton:hover { background: #f1f5f9; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+.fileButton input { display: none; }
+#status { margin-left: 10px; font-size: 13px; color: #374151; }
+.viewerWrap { height: calc(100vh - 120px); overflow: auto; padding: 24px; }
+.viewer { position: relative; display: inline-block; background: #e5e7eb; box-shadow: 0 8px 30px rgba(0,0,0,0.18); }
+#pdfImage { display: block; max-width: none; cursor: crosshair; }
+#markerCanvas { position: absolute; left: 0; top: 0; pointer-events: none; }
+
+.floatingGuide {
+  position: fixed;
+  top: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 999;
+  background: rgba(17, 24, 39, 0.96);
+  color: white;
+  padding: 22px 30px;
+  border-radius: 16px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.7;
+  text-align: center;
+  min-width: 360px;
+  white-space: pre-line;
+  box-shadow: 0 14px 34px rgba(0,0,0,0.24);
+}
+.hidden { display: none; }

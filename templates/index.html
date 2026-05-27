@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>PDF Direct Writer Web v4 Fixed</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>PDF Direct Writer Web</h1>
+      <p>開始位置をクリック、文字入力、折返し右端をクリック。迷わないPDF文字入力ツール。</p>
+    </header>
+
+    <section class="toolbar">
+      <label class="fileButton">PDFを開く<input type="file" id="pdfFile" accept="application/pdf"></label>
+      <button id="prevBtn" disabled>前ページ</button>
+      <button id="nextBtn" disabled>次ページ</button>
+      <button id="undoBtn" disabled>最後の入力を取消</button>
+      <button id="cancelBtn" disabled>入力をキャンセル</button>
+      <button id="clearBtn" disabled>全削除</button>
+      <button id="exportBtn" disabled>PDF出力</button>
+      <span id="status">PDFを開いてください</span>
+    </section>
+
+    <div id="floatingGuide" class="floatingGuide hidden">
+      折返し右端をクリックしてください
+    </div>
+
+    <main class="viewerWrap">
+      <div class="viewer" id="viewer">
+        <img id="pdfImage" alt="PDF preview">
+        <canvas id="markerCanvas"></canvas>
+      </div>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
