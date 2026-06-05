@@ -116,3 +116,39 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   }
 }
 
+/* v7.2 export completion toast */
+.exportToast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%) translateY(12px);
+  z-index: 1000;
+  max-width: calc(100vw - 32px);
+  background: rgba(17, 24, 39, 0.96);
+  color: white;
+  padding: 14px 20px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  box-shadow: 0 14px 34px rgba(0,0,0,0.24);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.exportToast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (max-width: 768px) {
+  .exportToast {
+    bottom: 18px;
+    width: calc(100vw - 28px);
+    font-size: 16px;
+    padding: 16px 18px;
+  }
+}
+
