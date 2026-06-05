@@ -33,3 +33,86 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   box-shadow: 0 14px 34px rgba(0,0,0,0.24);
 }
 .hidden { display: none; }
+
+/* v7.1 mobile readability patch */
+@media (max-width: 768px) {
+  header {
+    padding: 22px 18px;
+  }
+
+  h1 {
+    font-size: 30px;
+    line-height: 1.2;
+  }
+
+  header p {
+    margin-top: 10px;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  .toolbar {
+    gap: 10px;
+    padding: 12px;
+    align-items: stretch;
+  }
+
+  button,
+  .fileButton {
+    min-height: 48px;
+    padding: 12px 14px;
+    font-size: 16px;
+    border-radius: 12px;
+  }
+
+  #status {
+    width: 100%;
+    margin-left: 0;
+    padding: 8px 2px 2px;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .viewerWrap {
+    height: calc(100vh - 190px);
+    padding: 14px;
+  }
+
+  .floatingGuide {
+    top: 110px;
+    width: calc(100vw - 32px);
+    min-width: auto;
+    padding: 20px 18px;
+    font-size: 18px;
+    line-height: 1.6;
+  }
+}
+
+@media (max-width: 480px) {
+  h1 {
+    font-size: 28px;
+  }
+
+  header p {
+    font-size: 15px;
+  }
+
+  button,
+  .fileButton {
+    width: calc(50% - 5px);
+    text-align: center;
+    justify-content: center;
+  }
+
+  #exportBtn,
+  #clearBtn,
+  #undoBtn,
+  #cancelBtn {
+    width: calc(50% - 5px);
+  }
+
+  #status {
+    font-size: 14px;
+  }
+}
+
