@@ -328,6 +328,34 @@ clearBtn.addEventListener("click", async () => {
   updatePreview(data);
 });
 
+
+function showExportToast(message) {
+  let toast = document.getElementById("exportToast");
+
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "exportToast";
+    toast.className = "exportToast";
+    document.body.appendChild(toast);
+  }
+
+  toast.textContent = message;
+  toast.classList.add("show");
+
+  setTimeout(() => {
+    toast.classList.remove("show");
+  }, 6000);
+}
+
+function downloadFileWithoutLeaving(downloadUrl) {
+  const a = document.createElement("a");
+  a.href = downloadUrl;
+  a.download = "direct_result_web.pdf";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 exportBtn.addEventListener("click", async () => {
   setStatus("PDFを出力しています...");
 
@@ -340,6 +368,8 @@ exportBtn.addEventListener("click", async () => {
   const data = await res.json();
   if (data.error) { alert(data.error); return; }
 
-  window.location.href = data.download_url;
-  setStatus("PDFを出力しました");
+  downloadFileWithoutLeaving(data.download_url);
+
+  setStatus("PDFを出力しました。ダウンロードフォルダをご確認ください。");
+  showExportToast("PDF出力完了。ダウンロードフォルダに保存されました。");
 });
