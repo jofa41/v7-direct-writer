@@ -1,7 +1,7 @@
 import base64, uuid
 from pathlib import Path
 import fitz
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, make_response
 
 app = Flask(__name__)
 BASE_DIR = Path(__file__).resolve().parent
@@ -223,7 +223,28 @@ def export_pdf():
 
 @app.route("/download/<filename>")
 def download(filename):
-    return send_file(OUTPUT_DIR / filename, as_attachment=True, download_name="direct_result_web.pdf")
+    file_path = OUTPUT_DIR / filename
+
+    response = make_response(
+        send_file(
+            file_path,
+            as_attachment=True,
+            download_name="direct_result_web.pdf",
+            mimetype="application/octet-stream",
+            conditional=False,
+            max_age=0,
+        )
+    )
+
+    # Safari対策：PDFプレビューではなく、添付ファイルとして扱わせる意図を強める
+    response.headers["Content-Disposition"] = 'attachment; filename="direct_result_web.pdf"'
+    response.headers["Content-Type"] = "application/octet-stream"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
+    return response
 
 if __name__ == "__main__":
     app.run(debug=True)
