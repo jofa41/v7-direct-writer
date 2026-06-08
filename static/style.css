@@ -11,8 +11,24 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 #status { margin-left: 10px; font-size: 13px; color: #374151; }
 .viewerWrap { height: calc(100vh - 120px); overflow: auto; padding: 24px; }
 .viewer { position: relative; display: inline-block; background: #e5e7eb; box-shadow: 0 8px 30px rgba(0,0,0,0.18); }
-#pdfImage { display: block; max-width: none; cursor: crosshair; }
-#markerCanvas { position: absolute; left: 0; top: 0; pointer-events: none; }
+
+#pdfImage {
+  display: block;
+  max-width: none;
+  cursor: crosshair;
+}
+
+#pdfImage:not([src]),
+#pdfImage[src=""] {
+  display: none;
+}
+
+#markerCanvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
 
 .floatingGuide {
   position: fixed;
