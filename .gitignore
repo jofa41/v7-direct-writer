@@ -1,0 +1,28 @@
+# Local archives and generated files
+old/
+uploads/
+output/
+outputs/
+tmp/
+temp/
+*.pdf
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment files
+.env
+.env.*
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
