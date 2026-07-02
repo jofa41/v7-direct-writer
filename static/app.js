@@ -7,6 +7,8 @@ let pageWidth = 0;
 let pendingItem = null;
 let lastClick = null;
 let hoverPoint = null;
+let pageItems = [];
+let selectedItemId = null;
 let mode = "idle";
 
 const pdfFile = document.getElementById("pdfFile");
@@ -27,6 +29,25 @@ function setStatus(text) { statusEl.textContent = text; }
 function showFloatingGuide(text) { floatingGuide.textContent = text; floatingGuide.classList.remove("hidden"); }
 function hideFloatingGuide() { floatingGuide.classList.add("hidden"); }
 
+function getSelectedItem() {
+  return pageItems.find(item => item.item_id === selectedItemId) || null;
+}
+
+function summarizeText(text) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "空の項目";
+  return normalized.length > 16 ? normalized.slice(0, 16) + "..." : normalized;
+}
+
+function setIdleStatus() {
+  const selectedItem = getSelectedItem();
+  if (selectedItem) {
+    setStatus(`選択中: ${summarizeText(selectedItem.text)}`);
+  } else {
+    setStatus(`${currentPage + 1}ページ目 / 全${pageCount}ページ`);
+  }
+}
+
 function isValidFontSize(value) {
   return /^[0-9]+(\.[0-9]+)?$/.test(value) && Number(value) > 0 && Number(value) <= 72;
 }
@@ -46,6 +67,14 @@ function updatePreview(data) {
   pageCount = data.page_count ?? pageCount;
   zoom = data.zoom ?? zoom;
   pageWidth = data.page_width ?? pageWidth;
+  pageItems = Array.isArray(data.items) ? data.items : [];
+
+  if (data.created_item_id) {
+    selectedItemId = data.created_item_id;
+  }
+  if (selectedItemId && !pageItems.some(item => item.item_id === selectedItemId)) {
+    selectedItemId = null;
+  }
 
   pdfImage.onload = () => {
     markerCanvas.width = pdfImage.naturalWidth;
@@ -60,7 +89,7 @@ function updatePreview(data) {
   enableButtons();
   if (mode !== "waiting_end") {
     hideFloatingGuide();
-    setStatus(`${currentPage + 1}ページ目 / 全${pageCount}ページ`);
+    setIdleStatus();
   }
 }
 
@@ -73,6 +102,57 @@ function drawCross(ctx, x, y, color="red") {
   ctx.stroke();
 }
 
+function getItemBounds(item) {
+  if (item.bounds) return item.bounds;
+  const lineCount = Array.isArray(item.lines) && item.lines.length ? item.lines.length : 1;
+  return {
+    x: item.x,
+    y: item.y - item.font_size,
+    width: Math.max(item.wrap_width || 0, item.font_size || 10),
+    height: lineCount * (item.font_size || 10) * 1.25
+  };
+}
+
+function drawSelectedItem(ctx) {
+  const selectedItem = getSelectedItem();
+  if (!selectedItem || selectedItem.page !== currentPage) return;
+
+  const bounds = getItemBounds(selectedItem);
+  const padding = Math.max(4, (selectedItem.font_size || 10) * 0.35);
+  const x = (bounds.x - padding) * zoom;
+  const y = (bounds.y - padding) * zoom;
+  const width = (bounds.width + padding * 2) * zoom;
+  const height = (bounds.height + padding * 2) * zoom;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(14, 165, 233, 0.08)";
+  ctx.strokeStyle = "rgba(14, 116, 144, 0.95)";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([7, 4]);
+  ctx.fillRect(x, y, width, height);
+  ctx.strokeRect(x, y, width, height);
+  ctx.restore();
+}
+
+function hitTestItem(point) {
+  for (let i = pageItems.length - 1; i >= 0; i--) {
+    const item = pageItems[i];
+    if (item.page !== currentPage) continue;
+
+    const bounds = getItemBounds(item);
+    const padding = Math.max(8, (item.font_size || 10) * 0.8);
+    const left = bounds.x - padding;
+    const top = bounds.y - padding;
+    const right = bounds.x + bounds.width + padding;
+    const bottom = bounds.y + bounds.height + padding;
+
+    if (point.x >= left && point.x <= right && point.y >= top && point.y <= bottom) {
+      return item;
+    }
+  }
+  return null;
+}
+
 function drawMarkers() {
   const ctx = markerCanvas.getContext("2d");
   ctx.clearRect(0, 0, markerCanvas.width, markerCanvas.height);
@@ -80,6 +160,8 @@ function drawMarkers() {
   if (lastClick && lastClick.page === currentPage) {
     drawCross(ctx, lastClick.x * zoom, lastClick.y * zoom);
   }
+
+  drawSelectedItem(ctx);
 
   if (pendingItem && pendingItem.page === currentPage) {
     const x = pendingItem.x * zoom;
@@ -125,7 +207,7 @@ function resetPending() {
   hideFloatingGuide();
   enableButtons();
   drawMarkers();
-  setStatus(`${currentPage + 1}ページ目 / 全${pageCount}ページ`);
+  setIdleStatus();
 }
 
 async function commitPendingWithWidth(wrapWidth) {
@@ -190,6 +272,8 @@ pdfFile.addEventListener("change", async () => {
   pendingItem = null;
   hoverPoint = null;
   lastClick = null;
+  pageItems = [];
+  selectedItemId = null;
   mode = "idle";
   updatePreview(data);
 });
@@ -207,6 +291,7 @@ async function loadPage(page) {
   pendingItem = null;
   hoverPoint = null;
   lastClick = null;
+  selectedItemId = null;
   mode = "idle";
   updatePreview(data);
 }
@@ -226,8 +311,22 @@ pdfImage.addEventListener("click", async (event) => {
   const point = getPdfPointFromClick(event);
 
   if (mode === "idle") {
+    const hitItem = hitTestItem(point);
+    if (hitItem) {
+      selectedItemId = hitItem.item_id;
+      lastClick = null;
+      drawMarkers();
+      setIdleStatus();
+      return;
+    }
+
+    selectedItemId = null;
     const text = prompt("この位置に書き込む文字を入力してください");
-    if (!text) return;
+    if (!text) {
+      drawMarkers();
+      setIdleStatus();
+      return;
+    }
 
     let fontSize = null;
 
@@ -305,6 +404,9 @@ undoBtn.addEventListener("click", async () => {
   pendingItem = null;
   hoverPoint = null;
   lastClick = null;
+  if (selectedItemId && Array.isArray(data.items) && !data.items.some(item => item.item_id === selectedItemId)) {
+    selectedItemId = null;
+  }
   mode = "idle";
   updatePreview(data);
 });
@@ -324,6 +426,7 @@ clearBtn.addEventListener("click", async () => {
   pendingItem = null;
   hoverPoint = null;
   lastClick = null;
+  selectedItemId = null;
   mode = "idle";
   updatePreview(data);
 });
