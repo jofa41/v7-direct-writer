@@ -403,6 +403,41 @@ def clear():
         **preview_data,
     })
 
+@app.route("/delete_item", methods=["POST"])
+def delete_item():
+    data = get_request_json()
+    session = get_session(data.get("session_id"))
+    if not session:
+        return jsonify({"error": "PDFを開き直してください。"}), 404
+
+    item_id = str(data.get("item_id", "")).strip()
+    if not item_id:
+        return json_error("削除する項目を選択してください。")
+
+    delete_index = None
+    for index, item in enumerate(session["items"]):
+        if item.get("item_id") == item_id:
+            delete_index = index
+            break
+
+    if delete_index is None:
+        return json_error("選択項目が見つかりません。", 404)
+
+    deleted_item = session["items"].pop(delete_index)
+    page_index = clamp_page_index(data.get("page", deleted_item.get("page", 0)), session["page_count"])
+
+    preview_data = render_preview_image(
+        Path(session["pdf_path"]), page_index, session["items"], zoom=session["zoom"]
+    )
+    return jsonify({
+        "current_page": page_index,
+        "page_count": session["page_count"],
+        "items_count": len(session["items"]),
+        "deleted_item_id": item_id,
+        "items": get_page_items_metadata(session, page_index),
+        **preview_data,
+    })
+
 @app.route("/export", methods=["POST"])
 def export_pdf():
     cleanup_expired_resources()
