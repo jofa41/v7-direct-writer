@@ -169,6 +169,56 @@ def wrap_text(text, font_size, max_width):
             result.append(current)
     return result if result else [""]
 
+def ensure_item_id(item):
+    if not item.get("item_id"):
+        item["item_id"] = str(uuid.uuid4())
+    return item["item_id"]
+
+def clamp_page_index(page, page_count):
+    try:
+        page_index = int(page)
+    except (TypeError, ValueError):
+        page_index = 0
+    return max(0, min(page_index, page_count - 1))
+
+def get_item_bounds(item):
+    lines = item.get("lines") or wrap_text(
+        item["text"], item["font_size"], item.get("wrap_width", 9999)
+    )
+    line_height = item["font_size"] * 1.25
+    text_width = max((estimate_text_width(line, item["font_size"]) for line in lines), default=0)
+    width = max(text_width, item["font_size"])
+    height = max(len(lines), 1) * line_height
+    return {
+        "x": round(item["x"], 2),
+        "y": round(item["y"] - item["font_size"], 2),
+        "width": round(width, 2),
+        "height": round(height, 2),
+    }
+
+def get_page_items_metadata(session, page_index):
+    items = []
+    for item in session["items"]:
+        if item.get("page") != page_index:
+            continue
+        ensure_item_id(item)
+        lines = item.get("lines") or wrap_text(
+            item["text"], item["font_size"], item.get("wrap_width", 9999)
+        )
+        item["lines"] = lines
+        items.append({
+            "item_id": item["item_id"],
+            "page": item["page"],
+            "text": item["text"],
+            "x": item["x"],
+            "y": item["y"],
+            "font_size": item["font_size"],
+            "wrap_width": item["wrap_width"],
+            "lines": lines,
+            "bounds": get_item_bounds(item),
+        })
+    return items
+
 def draw_item_to_pdf_page(page, item):
     lines = item.get("lines") or wrap_text(
         item["text"], item["font_size"], item.get("wrap_width", 9999)
@@ -254,6 +304,7 @@ def upload_pdf():
         "page_count": page_count,
         "current_page": 0,
         "items_count": 0,
+        "items": [],
         **preview,
     })
 
@@ -264,7 +315,7 @@ def preview():
     if not session:
         return jsonify({"error": "PDFを開き直してください。"}), 404
 
-    page_index = max(0, min(int(data.get("page", 0)), session["page_count"] - 1))
+    page_index = clamp_page_index(data.get("page", 0), session["page_count"])
     preview_data = render_preview_image(
         Path(session["pdf_path"]), page_index, session["items"], zoom=session["zoom"]
     )
@@ -272,6 +323,7 @@ def preview():
         "current_page": page_index,
         "page_count": session["page_count"],
         "items_count": len(session["items"]),
+        "items": get_page_items_metadata(session, page_index),
         **preview_data,
     })
 
@@ -282,8 +334,10 @@ def add_text():
     if not session:
         return jsonify({"error": "PDFを開き直してください。"}), 404
 
+    page_index = clamp_page_index(data["page"], session["page_count"])
     item = {
-        "page": int(data["page"]),
+        "item_id": str(uuid.uuid4()),
+        "page": page_index,
         "text": data["text"],
         "x": round(float(data["x"]), 2),
         "y": round(float(data["y"]), 2),
@@ -301,6 +355,8 @@ def add_text():
         "page_count": session["page_count"],
         "items_count": len(session["items"]),
         "lines_count": len(item["lines"]),
+        "created_item_id": item["item_id"],
+        "items": get_page_items_metadata(session, item["page"]),
         **preview_data,
     })
 
@@ -311,7 +367,7 @@ def undo():
     if not session:
         return jsonify({"error": "PDFを開き直してください。"}), 404
 
-    page_index = int(data.get("page", 0))
+    page_index = clamp_page_index(data.get("page", 0), session["page_count"])
     if session["items"]:
         session["items"].pop()
 
@@ -322,6 +378,7 @@ def undo():
         "current_page": page_index,
         "page_count": session["page_count"],
         "items_count": len(session["items"]),
+        "items": get_page_items_metadata(session, page_index),
         **preview_data,
     })
 
@@ -332,7 +389,7 @@ def clear():
     if not session:
         return jsonify({"error": "PDFを開き直してください。"}), 404
 
-    page_index = int(data.get("page", 0))
+    page_index = clamp_page_index(data.get("page", 0), session["page_count"])
     session["items"] = []
 
     preview_data = render_preview_image(
@@ -342,6 +399,7 @@ def clear():
         "current_page": page_index,
         "page_count": session["page_count"],
         "items_count": 0,
+        "items": [],
         **preview_data,
     })
 
