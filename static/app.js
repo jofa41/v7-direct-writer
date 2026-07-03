@@ -21,6 +21,7 @@ const floatingGuide = document.getElementById("floatingGuide");
 const prevBtn = document.getElementById("prevBtn");
 const nextBtn = document.getElementById("nextBtn");
 const undoBtn = document.getElementById("undoBtn");
+const deleteItemBtn = document.getElementById("deleteItemBtn");
 const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 const exportBtn = document.getElementById("exportBtn");
@@ -56,6 +57,7 @@ function enableButtons() {
   prevBtn.disabled = !sessionId || currentPage <= 0 || mode === "waiting_end";
   nextBtn.disabled = !sessionId || currentPage >= pageCount - 1 || mode === "waiting_end";
   undoBtn.disabled = !sessionId || mode === "waiting_end";
+  deleteItemBtn.disabled = !sessionId || !selectedItemId || mode === "waiting_end";
   cancelBtn.disabled = mode !== "waiting_end";
   clearBtn.disabled = !sessionId || mode === "waiting_end";
   exportBtn.disabled = !sessionId || mode === "waiting_end";
@@ -316,11 +318,13 @@ pdfImage.addEventListener("click", async (event) => {
       selectedItemId = hitItem.item_id;
       lastClick = null;
       drawMarkers();
+      enableButtons();
       setIdleStatus();
       return;
     }
 
     selectedItemId = null;
+    enableButtons();
     const text = prompt("この位置に書き込む文字を入力してください");
     if (!text) {
       drawMarkers();
@@ -409,6 +413,34 @@ undoBtn.addEventListener("click", async () => {
   }
   mode = "idle";
   updatePreview(data);
+});
+
+deleteItemBtn.addEventListener("click", async () => {
+  if (!selectedItemId) {
+    setStatus("削除する項目を選択してください");
+    return;
+  }
+
+  const res = await fetch("/delete_item", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      session_id: sessionId,
+      item_id: selectedItemId,
+      page: currentPage
+    })
+  });
+
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+
+  selectedItemId = null;
+  pendingItem = null;
+  hoverPoint = null;
+  lastClick = null;
+  mode = "idle";
+  updatePreview(data);
+  setStatus("選択項目を削除しました");
 });
 
 clearBtn.addEventListener("click", async () => {
