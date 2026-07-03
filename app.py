@@ -26,6 +26,7 @@ MAX_TEXT_LENGTH = 1000
 MIN_FONT_SIZE = 1
 MAX_FONT_SIZE = 72
 MAX_MOVE_DELTA = 20
+MIN_WRAP_WIDTH = 10
 FONT_SIZE_TRANSLATION = str.maketrans("０１２３４５６７８９．", "0123456789.")
 DOWNLOAD_FILENAME_RE = re.compile(
     r"^direct_result_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.pdf$",
@@ -256,6 +257,27 @@ def validate_move_delta(value, name):
     if not math.isfinite(delta) or delta < -MAX_MOVE_DELTA or delta > MAX_MOVE_DELTA:
         raise ValueError(f"{name}は-{MAX_MOVE_DELTA}〜{MAX_MOVE_DELTA}の範囲で指定してください。")
     return delta
+
+def get_pdf_page_width(pdf_path, page_index):
+    doc = fitz.open(str(pdf_path))
+    try:
+        return doc[page_index].rect.width
+    finally:
+        doc.close()
+
+def validate_wrap_width(value, item, session):
+    try:
+        wrap_width = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("折返し幅は数字で指定してください。")
+    if not math.isfinite(wrap_width) or wrap_width < MIN_WRAP_WIDTH:
+        raise ValueError(f"折返し幅は{MIN_WRAP_WIDTH}以上にしてください。")
+
+    page_width = get_pdf_page_width(Path(session["pdf_path"]), item["page"])
+    max_width = max(MIN_WRAP_WIDTH, page_width - float(item["x"]))
+    if wrap_width > max_width:
+        raise ValueError("折返し右端はページ内を指定してください。")
+    return wrap_width
 
 def draw_item_to_pdf_page(page, item):
     lines = item.get("lines") or wrap_text(
@@ -506,6 +528,42 @@ def update_item():
     item["text"] = text
     item["font_size"] = font_size
     item["lines"] = wrap_text(item["text"], item["font_size"], item.get("wrap_width", 9999))
+
+    page_index = clamp_page_index(data.get("page", item.get("page", 0)), session["page_count"])
+    preview_data = render_preview_image(
+        Path(session["pdf_path"]), page_index, session["items"], zoom=session["zoom"]
+    )
+    return jsonify({
+        "current_page": page_index,
+        "page_count": session["page_count"],
+        "items_count": len(session["items"]),
+        "updated_item_id": item_id,
+        "items": get_page_items_metadata(session, page_index),
+        **preview_data,
+    })
+
+@app.route("/update_wrap_width", methods=["POST"])
+def update_wrap_width():
+    data = get_request_json()
+    session = get_session(data.get("session_id"))
+    if not session:
+        return jsonify({"error": "PDFを開き直してください。"}), 404
+
+    item_id = str(data.get("item_id", "")).strip()
+    if not item_id:
+        return json_error("幅を編集する項目を選択してください。")
+
+    item = find_session_item(session, item_id)
+    if not item:
+        return json_error("選択項目が見つかりません。", 404)
+
+    try:
+        wrap_width = validate_wrap_width(data.get("wrap_width"), item, session)
+    except ValueError as exc:
+        return json_error(str(exc))
+
+    item["wrap_width"] = round(wrap_width, 2)
+    item["lines"] = wrap_text(item["text"], item["font_size"], item["wrap_width"])
 
     page_index = clamp_page_index(data.get("page", item.get("page", 0)), session["page_count"])
     preview_data = render_preview_image(

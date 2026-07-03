@@ -27,6 +27,7 @@ const prevBtn = document.getElementById("prevBtn");
 const nextBtn = document.getElementById("nextBtn");
 const undoBtn = document.getElementById("undoBtn");
 const editItemBtn = document.getElementById("editItemBtn");
+const wrapEditBtn = document.getElementById("wrapEditBtn");
 const deleteItemBtn = document.getElementById("deleteItemBtn");
 const nudgeButtons = Array.from(document.querySelectorAll(".nudgeBtn"));
 const cancelBtn = document.getElementById("cancelBtn");
@@ -78,16 +79,18 @@ function validateFontSizeInput(value) {
 }
 
 function enableButtons() {
-  prevBtn.disabled = !sessionId || currentPage <= 0 || mode === "waiting_end";
-  nextBtn.disabled = !sessionId || currentPage >= pageCount - 1 || mode === "waiting_end";
-  undoBtn.disabled = !sessionId || mode === "waiting_end";
-  const selectedActionDisabled = !sessionId || !selectedItemId || mode === "waiting_end";
+  const busyMode = mode === "waiting_end" || mode === "wrap_edit";
+  prevBtn.disabled = !sessionId || currentPage <= 0 || busyMode;
+  nextBtn.disabled = !sessionId || currentPage >= pageCount - 1 || busyMode;
+  undoBtn.disabled = !sessionId || busyMode;
+  const selectedActionDisabled = !sessionId || !selectedItemId || busyMode;
   editItemBtn.disabled = selectedActionDisabled;
+  wrapEditBtn.disabled = selectedActionDisabled;
   deleteItemBtn.disabled = selectedActionDisabled;
   nudgeButtons.forEach(button => { button.disabled = selectedActionDisabled; });
-  cancelBtn.disabled = mode !== "waiting_end";
-  clearBtn.disabled = !sessionId || mode === "waiting_end";
-  exportBtn.disabled = !sessionId || mode === "waiting_end";
+  cancelBtn.disabled = !busyMode;
+  clearBtn.disabled = !sessionId || busyMode;
+  exportBtn.disabled = !sessionId || busyMode;
 }
 
 async function refreshCurrentPreview() {
@@ -203,6 +206,31 @@ function drawSelectedItem(ctx) {
   ctx.restore();
 }
 
+function drawWrapEditGuide(ctx) {
+  const selectedItem = getSelectedItem();
+  if (mode !== "wrap_edit" || !selectedItem || !hoverPoint || selectedItem.page !== currentPage) return;
+
+  const startX = selectedItem.x * zoom;
+  const startY = selectedItem.y * zoom;
+  const endX = hoverPoint.x * zoom;
+
+  ctx.save();
+  ctx.strokeStyle = "rgba(30, 64, 175, 0.9)";
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(endX, startY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = "rgba(30, 64, 175, 0.45)";
+  ctx.beginPath();
+  ctx.moveTo(endX, startY - 14);
+  ctx.lineTo(endX, startY + 14);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function hitTestItem(point) {
   for (let i = pageItems.length - 1; i >= 0; i--) {
     const item = pageItems[i];
@@ -231,6 +259,7 @@ function drawMarkers() {
   }
 
   drawSelectedItem(ctx);
+  drawWrapEditGuide(ctx);
 
   if (pendingItem && pendingItem.page === currentPage) {
     const x = pendingItem.x * zoom;
@@ -281,6 +310,65 @@ function resetPending() {
   enableButtons();
   drawMarkers();
   setIdleStatus();
+}
+
+function resetWrapEditMode() {
+  hoverPoint = null;
+  mode = "idle";
+  hideFloatingGuide();
+  enableButtons();
+  drawMarkers();
+  setIdleStatus();
+}
+
+function startWrapEditMode() {
+  const selectedItem = getSelectedItem();
+  if (!selectedItem) {
+    selectedItemId = null;
+    enableButtons();
+    setStatus("幅を編集する項目を選択してください");
+    return;
+  }
+
+  stopNudgeRepeat({ finalize: false });
+  pendingItem = null;
+  hoverPoint = null;
+  lastClick = null;
+  mode = "wrap_edit";
+  drawMarkers();
+  enableButtons();
+  showFloatingGuide("新しい右端位置をクリックしてください\nEsc：キャンセル");
+  setStatus("折返し幅の右端位置をクリックしてください");
+}
+
+async function updateSelectedWrapWidth(wrapWidth) {
+  if (!selectedItemId) {
+    setStatus("幅を編集する項目を選択してください");
+    return false;
+  }
+
+  const res = await fetch("/update_wrap_width", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      session_id: sessionId,
+      item_id: selectedItemId,
+      wrap_width: wrapWidth,
+      page: currentPage
+    })
+  });
+
+  const data = await res.json();
+  if (data.error) { alert(data.error); return false; }
+
+  selectedItemId = data.updated_item_id || selectedItemId;
+  pendingItem = null;
+  hoverPoint = null;
+  lastClick = null;
+  mode = "idle";
+  updatePreview(data);
+  setStatus("折返し幅を更新しました");
+  return true;
 }
 
 async function commitPendingWithWidth(wrapWidth) {
@@ -417,7 +505,7 @@ prevBtn.addEventListener("click", () => { if (currentPage > 0) loadPage(currentP
 nextBtn.addEventListener("click", () => { if (currentPage < pageCount - 1) loadPage(currentPage + 1); });
 
 pdfImage.addEventListener("mousemove", (event) => {
-  if (mode !== "waiting_end" || !pendingItem) return;
+  if (mode !== "waiting_end" && mode !== "wrap_edit") return;
   const point = getPdfPointFromClick(event);
   hoverPoint = { page: currentPage, x: point.x, y: point.y };
   drawMarkers();
@@ -426,6 +514,24 @@ pdfImage.addEventListener("mousemove", (event) => {
 pdfImage.addEventListener("click", async (event) => {
   if (!sessionId) return;
   const point = getPdfPointFromClick(event);
+
+  if (mode === "wrap_edit") {
+    const selectedItem = getSelectedItem();
+    if (!selectedItem) {
+      resetWrapEditMode();
+      setStatus("幅を編集する項目を選択してください");
+      return;
+    }
+
+    const wrapWidth = point.x - selectedItem.x;
+    if (wrapWidth < 10) {
+      alert("右端位置は、選択項目の開始位置より十分右側をクリックしてください。");
+      return;
+    }
+
+    await updateSelectedWrapWidth(wrapWidth);
+    return;
+  }
 
   if (mode === "idle") {
     const hitItem = hitTestItem(point);
@@ -456,6 +562,13 @@ pdfImage.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("keydown", async (event) => {
+  if (mode === "wrap_edit" && event.key === "Escape") {
+    event.preventDefault();
+    resetWrapEditMode();
+    setStatus("幅編集をキャンセルしました");
+    return;
+  }
+
   if (mode !== "waiting_end" || !pendingItem) return;
 
   if (event.key === "Enter") {
@@ -472,8 +585,13 @@ document.addEventListener("keydown", async (event) => {
 });
 
 cancelBtn.addEventListener("click", () => {
-  resetPending();
-  setStatus("入力をキャンセルしました");
+  if (mode === "wrap_edit") {
+    resetWrapEditMode();
+    setStatus("幅編集をキャンセルしました");
+  } else {
+    resetPending();
+    setStatus("入力をキャンセルしました");
+  }
 });
 
 undoBtn.addEventListener("click", async () => {
@@ -552,6 +670,15 @@ editItemBtn.addEventListener("click", async () => {
   mode = "idle";
   updatePreview(data);
   setStatus("選択項目を更新しました");
+});
+
+wrapEditBtn.addEventListener("click", () => {
+  if (!selectedItemId) {
+    setStatus("幅を編集する項目を選択してください");
+    return;
+  }
+
+  startWrapEditMode();
 });
 
 async function moveSelectedItem(dx, dy, options={}) {
