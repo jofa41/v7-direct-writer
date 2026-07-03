@@ -25,6 +25,7 @@ FILE_TTL_SECONDS = get_positive_int_env("FILE_TTL_SECONDS", 6 * 60 * 60)
 MAX_TEXT_LENGTH = 1000
 MIN_FONT_SIZE = 1
 MAX_FONT_SIZE = 72
+MAX_MOVE_DELTA = 20
 FONT_SIZE_TRANSLATION = str.maketrans("０１２３４５６７８９．", "0123456789.")
 DOWNLOAD_FILENAME_RE = re.compile(
     r"^direct_result_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.pdf$",
@@ -246,6 +247,15 @@ def validate_font_size(value):
     if not math.isfinite(font_size) or font_size < MIN_FONT_SIZE or font_size > MAX_FONT_SIZE:
         raise ValueError(f"文字サイズは{MIN_FONT_SIZE}〜{MAX_FONT_SIZE}の範囲で入力してください。")
     return font_size
+
+def validate_move_delta(value, name):
+    try:
+        delta = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name}は数字で指定してください。")
+    if not math.isfinite(delta) or delta < -MAX_MOVE_DELTA or delta > MAX_MOVE_DELTA:
+        raise ValueError(f"{name}は-{MAX_MOVE_DELTA}〜{MAX_MOVE_DELTA}の範囲で指定してください。")
+    return delta
 
 def draw_item_to_pdf_page(page, item):
     lines = item.get("lines") or wrap_text(
@@ -506,6 +516,43 @@ def update_item():
         "page_count": session["page_count"],
         "items_count": len(session["items"]),
         "updated_item_id": item_id,
+        "items": get_page_items_metadata(session, page_index),
+        **preview_data,
+    })
+
+@app.route("/move_item", methods=["POST"])
+def move_item():
+    data = get_request_json()
+    session = get_session(data.get("session_id"))
+    if not session:
+        return jsonify({"error": "PDFを開き直してください。"}), 404
+
+    item_id = str(data.get("item_id", "")).strip()
+    if not item_id:
+        return json_error("移動する項目を選択してください。")
+
+    item = find_session_item(session, item_id)
+    if not item:
+        return json_error("選択項目が見つかりません。", 404)
+
+    try:
+        dx = validate_move_delta(data.get("dx"), "dx")
+        dy = validate_move_delta(data.get("dy"), "dy")
+    except ValueError as exc:
+        return json_error(str(exc))
+
+    item["x"] = round(float(item["x"]) + dx, 2)
+    item["y"] = round(float(item["y"]) + dy, 2)
+
+    page_index = clamp_page_index(data.get("page", item.get("page", 0)), session["page_count"])
+    preview_data = render_preview_image(
+        Path(session["pdf_path"]), page_index, session["items"], zoom=session["zoom"]
+    )
+    return jsonify({
+        "current_page": page_index,
+        "page_count": session["page_count"],
+        "items_count": len(session["items"]),
+        "moved_item_id": item_id,
         "items": get_page_items_metadata(session, page_index),
         **preview_data,
     })
