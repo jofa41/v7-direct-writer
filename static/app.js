@@ -202,6 +202,10 @@ function getPdfPointFromClick(event) {
   };
 }
 
+function waitForPaint() {
+  return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+}
+
 function resetPending() {
   pendingItem = null;
   hoverPoint = null;
@@ -249,6 +253,50 @@ async function commitPendingWithWidth(wrapWidth) {
   hoverPoint = null;
   mode = "idle";
   updatePreview(data);
+}
+
+async function startNewTextInput(point) {
+  const text = prompt("この位置に書き込む文字を入力してください");
+  if (!text) {
+    drawMarkers();
+    setIdleStatus();
+    return;
+  }
+
+  let fontSize = null;
+
+  while (fontSize === null) {
+    const rawFontSize = prompt("文字サイズを半角数字で入力してください", "10");
+
+    // キャンセル時は、開始位置・文字入力も含めて今回の追加を中止
+    if (rawFontSize === null) return;
+
+    const trimmed = rawFontSize.trim();
+
+    if (isValidFontSize(trimmed)) {
+      fontSize = parseFloat(trimmed);
+    } else {
+      alert("文字サイズは半角数字で入力してください。\n例：10");
+      // ここで最初に戻らず、文字サイズ入力だけを再表示する
+    }
+  }
+
+  pendingItem = {
+    page: currentPage,
+    text,
+    x: point.x,
+    y: point.y,
+    font_size: fontSize
+  };
+
+  lastClick = { page: currentPage, x: point.x, y: point.y };
+  hoverPoint = null;
+  mode = "waiting_end";
+
+  drawMarkers();
+  enableButtons();
+  showFloatingGuide("折返し右端をクリックしてください\nEnter：ページ右端　Esc：キャンセル");
+  setStatus("折返し右端待機中（Enterでページ右端／Escでキャンセル）");
 }
 
 pdfFile.addEventListener("change", async () => {
@@ -323,49 +371,15 @@ pdfImage.addEventListener("click", async (event) => {
       return;
     }
 
+    const hadSelectedItem = selectedItemId !== null;
     selectedItemId = null;
     enableButtons();
-    const text = prompt("この位置に書き込む文字を入力してください");
-    if (!text) {
+    if (hadSelectedItem) {
       drawMarkers();
       setIdleStatus();
-      return;
+      await waitForPaint();
     }
-
-    let fontSize = null;
-
-    while (fontSize === null) {
-      const rawFontSize = prompt("文字サイズを半角数字で入力してください", "10");
-
-      // キャンセル時は、開始位置・文字入力も含めて今回の追加を中止
-      if (rawFontSize === null) return;
-
-      const trimmed = rawFontSize.trim();
-
-      if (isValidFontSize(trimmed)) {
-        fontSize = parseFloat(trimmed);
-      } else {
-        alert("文字サイズは半角数字で入力してください。\n例：10");
-        // ここで最初に戻らず、文字サイズ入力だけを再表示する
-      }
-    }
-
-    pendingItem = {
-      page: currentPage,
-      text,
-      x: point.x,
-      y: point.y,
-      font_size: fontSize
-    };
-
-    lastClick = { page: currentPage, x: point.x, y: point.y };
-    hoverPoint = null;
-    mode = "waiting_end";
-
-    drawMarkers();
-    enableButtons();
-    showFloatingGuide("折返し右端をクリックしてください\nEnter：ページ右端　Esc：キャンセル");
-    setStatus("折返し右端待機中（Enterでページ右端／Escでキャンセル）");
+    await startNewTextInput(point);
     return;
   }
 
