@@ -10,6 +10,11 @@ let hoverPoint = null;
 let pageItems = [];
 let selectedItemId = null;
 let mode = "idle";
+let activeNudge = null;
+
+const NUDGE_REPEAT_DELAY_MS = 250;
+const NUDGE_REPEAT_INTERVAL_MS = 80;
+const NUDGE_REPEAT_STEP = 6;
 
 const pdfFile = document.getElementById("pdfFile");
 const pdfImage = document.getElementById("pdfImage");
@@ -23,6 +28,7 @@ const nextBtn = document.getElementById("nextBtn");
 const undoBtn = document.getElementById("undoBtn");
 const editItemBtn = document.getElementById("editItemBtn");
 const deleteItemBtn = document.getElementById("deleteItemBtn");
+const nudgeButtons = Array.from(document.querySelectorAll(".nudgeBtn"));
 const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
 const exportBtn = document.getElementById("exportBtn");
@@ -75,8 +81,10 @@ function enableButtons() {
   prevBtn.disabled = !sessionId || currentPage <= 0 || mode === "waiting_end";
   nextBtn.disabled = !sessionId || currentPage >= pageCount - 1 || mode === "waiting_end";
   undoBtn.disabled = !sessionId || mode === "waiting_end";
-  editItemBtn.disabled = !sessionId || !selectedItemId || mode === "waiting_end";
-  deleteItemBtn.disabled = !sessionId || !selectedItemId || mode === "waiting_end";
+  const selectedActionDisabled = !sessionId || !selectedItemId || mode === "waiting_end";
+  editItemBtn.disabled = selectedActionDisabled;
+  deleteItemBtn.disabled = selectedActionDisabled;
+  nudgeButtons.forEach(button => { button.disabled = selectedActionDisabled; });
   cancelBtn.disabled = mode !== "waiting_end";
   clearBtn.disabled = !sessionId || mode === "waiting_end";
   exportBtn.disabled = !sessionId || mode === "waiting_end";
@@ -95,6 +103,7 @@ function updatePreview(data) {
   }
   if (selectedItemId && !pageItems.some(item => item.item_id === selectedItemId)) {
     selectedItemId = null;
+    stopNudgeRepeat();
   }
 
   pdfImage.onload = () => {
@@ -506,6 +515,121 @@ editItemBtn.addEventListener("click", async () => {
   setStatus("選択項目を更新しました");
 });
 
+async function moveSelectedItem(dx, dy) {
+  if (!selectedItemId) {
+    setStatus("移動する項目を選択してください");
+    return false;
+  }
+
+  let data;
+  try {
+    const res = await fetch("/move_item", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        session_id: sessionId,
+        item_id: selectedItemId,
+        dx,
+        dy,
+        page: currentPage
+      })
+    });
+    data = await res.json();
+  } catch (error) {
+    alert("選択項目を移動できませんでした。時間をおいて再度お試しください。");
+    return false;
+  }
+
+  if (data.error) { alert(data.error); return false; }
+
+  selectedItemId = data.moved_item_id || selectedItemId;
+  pendingItem = null;
+  hoverPoint = null;
+  lastClick = null;
+  mode = "idle";
+  updatePreview(data);
+  setStatus("選択項目を移動しました");
+  return true;
+}
+
+function stopNudgeRepeat() {
+  if (!activeNudge) return;
+  clearTimeout(activeNudge.timer);
+  activeNudge = null;
+}
+
+async function performNudgeStep(nudge, isRepeat=false) {
+  if (!nudge || nudge.inFlight || !selectedItemId) {
+    stopNudgeRepeat();
+    return false;
+  }
+
+  nudge.inFlight = true;
+  const multiplier = isRepeat ? NUDGE_REPEAT_STEP : 1;
+  const moved = await moveSelectedItem(nudge.dx * multiplier, nudge.dy * multiplier);
+  nudge.inFlight = false;
+
+  if (!moved || activeNudge !== nudge || !selectedItemId) {
+    stopNudgeRepeat();
+    return false;
+  }
+  return true;
+}
+
+function scheduleNudgeRepeat(nudge, delay) {
+  nudge.timer = setTimeout(async () => {
+    if (await performNudgeStep(nudge, true)) {
+      scheduleNudgeRepeat(nudge, NUDGE_REPEAT_INTERVAL_MS);
+    }
+  }, delay);
+}
+
+function startNudgeRepeat(button, event) {
+  if (button.disabled) return;
+  event.preventDefault();
+
+  stopNudgeRepeat();
+  const nudge = {
+    dx: Number(button.dataset.nudgeDx),
+    dy: Number(button.dataset.nudgeDy),
+    timer: null,
+    inFlight: false
+  };
+  activeNudge = nudge;
+
+  performNudgeStep(nudge).then(moved => {
+    if (moved && activeNudge === nudge) {
+      scheduleNudgeRepeat(nudge, NUDGE_REPEAT_DELAY_MS);
+    }
+  });
+}
+
+nudgeButtons.forEach(button => {
+  button.addEventListener("pointerdown", event => {
+    if (event.button !== undefined && event.button !== 0) return;
+    startNudgeRepeat(button, event);
+  });
+
+  button.addEventListener("pointerleave", stopNudgeRepeat);
+  button.addEventListener("pointercancel", stopNudgeRepeat);
+  button.addEventListener("contextmenu", event => event.preventDefault());
+
+  button.addEventListener("click", async event => {
+    if (event.detail !== 0 || button.disabled) return;
+    await moveSelectedItem(
+      Number(button.dataset.nudgeDx),
+      Number(button.dataset.nudgeDy)
+    );
+  });
+});
+
+document.addEventListener("pointerup", stopNudgeRepeat);
+document.addEventListener("pointercancel", stopNudgeRepeat);
+window.addEventListener("blur", stopNudgeRepeat);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopNudgeRepeat();
+});
+
 deleteItemBtn.addEventListener("click", async () => {
   if (!selectedItemId) {
     setStatus("削除する項目を選択してください");
@@ -525,6 +649,7 @@ deleteItemBtn.addEventListener("click", async () => {
   const data = await res.json();
   if (data.error) { alert(data.error); return; }
 
+  stopNudgeRepeat();
   selectedItemId = null;
   pendingItem = null;
   hoverPoint = null;
@@ -546,6 +671,7 @@ clearBtn.addEventListener("click", async () => {
   const data = await res.json();
   if (data.error) { alert(data.error); return; }
 
+  stopNudgeRepeat();
   pendingItem = null;
   hoverPoint = null;
   lastClick = null;
