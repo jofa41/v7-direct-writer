@@ -545,17 +545,21 @@ def move_item():
     item["y"] = round(float(item["y"]) + dy, 2)
 
     page_index = clamp_page_index(data.get("page", item.get("page", 0)), session["page_count"])
-    preview_data = render_preview_image(
-        Path(session["pdf_path"]), page_index, session["items"], zoom=session["zoom"]
-    )
-    return jsonify({
+    response_data = {
         "current_page": page_index,
         "page_count": session["page_count"],
         "items_count": len(session["items"]),
         "moved_item_id": item_id,
         "items": get_page_items_metadata(session, page_index),
-        **preview_data,
-    })
+    }
+
+    if data.get("render_preview", True) is False:
+        return jsonify(response_data)
+
+    preview_data = render_preview_image(
+        Path(session["pdf_path"]), page_index, session["items"], zoom=session["zoom"]
+    )
+    return jsonify({**response_data, **preview_data})
 
 @app.route("/export", methods=["POST"])
 def export_pdf():

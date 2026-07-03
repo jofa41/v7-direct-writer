@@ -90,6 +90,45 @@ function enableButtons() {
   exportBtn.disabled = !sessionId || mode === "waiting_end";
 }
 
+async function refreshCurrentPreview() {
+  if (!sessionId) return false;
+
+  let data;
+  try {
+    const res = await fetch("/preview", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ session_id: sessionId, page: currentPage })
+    });
+    data = await res.json();
+  } catch (error) {
+    alert("プレビューを更新できませんでした。時間をおいて再度お試しください。");
+    return false;
+  }
+
+  if (data.error) { alert(data.error); return false; }
+
+  updatePreview(data);
+  return true;
+}
+
+function updateItemsOnly(data) {
+  currentPage = data.current_page ?? currentPage;
+  pageCount = data.page_count ?? pageCount;
+  pageItems = Array.isArray(data.items) ? data.items : [];
+
+  if (data.moved_item_id) {
+    selectedItemId = data.moved_item_id;
+  }
+  if (selectedItemId && !pageItems.some(item => item.item_id === selectedItemId)) {
+    selectedItemId = null;
+    stopNudgeRepeat({ finalize: false });
+  }
+
+  drawMarkers();
+  enableButtons();
+}
+
 function updatePreview(data) {
   pdfImage.src = data.image;
   currentPage = data.current_page ?? currentPage;
@@ -103,7 +142,7 @@ function updatePreview(data) {
   }
   if (selectedItemId && !pageItems.some(item => item.item_id === selectedItemId)) {
     selectedItemId = null;
-    stopNudgeRepeat();
+    stopNudgeRepeat({ finalize: false });
   }
 
   pdfImage.onload = () => {
@@ -515,12 +554,13 @@ editItemBtn.addEventListener("click", async () => {
   setStatus("選択項目を更新しました");
 });
 
-async function moveSelectedItem(dx, dy) {
+async function moveSelectedItem(dx, dy, options={}) {
   if (!selectedItemId) {
     setStatus("移動する項目を選択してください");
     return false;
   }
 
+  const renderPreview = options.renderPreview !== false;
   let data;
   try {
     const res = await fetch("/move_item", {
@@ -531,7 +571,8 @@ async function moveSelectedItem(dx, dy) {
         item_id: selectedItemId,
         dx,
         dy,
-        page: currentPage
+        page: currentPage,
+        render_preview: renderPreview
       })
     });
     data = await res.json();
@@ -547,30 +588,56 @@ async function moveSelectedItem(dx, dy) {
   hoverPoint = null;
   lastClick = null;
   mode = "idle";
-  updatePreview(data);
+  if (renderPreview) {
+    updatePreview(data);
+  } else {
+    updateItemsOnly(data);
+  }
   setStatus("選択項目を移動しました");
   return true;
 }
 
-function stopNudgeRepeat() {
+function stopNudgeRepeat(options={}) {
   if (!activeNudge) return;
-  clearTimeout(activeNudge.timer);
+  const nudge = activeNudge;
+  clearTimeout(nudge.timer);
+  nudge.stopped = true;
+  nudge.finalizeOnStop = options.finalize !== false;
   activeNudge = null;
+
+  if (nudge.finalizeOnStop && !nudge.inFlight && nudge.needsPreview && selectedItemId) {
+    refreshCurrentPreview();
+  }
 }
 
 async function performNudgeStep(nudge, isRepeat=false) {
   if (!nudge || nudge.inFlight || !selectedItemId) {
-    stopNudgeRepeat();
+    stopNudgeRepeat({ finalize: false });
     return false;
   }
 
   nudge.inFlight = true;
   const multiplier = isRepeat ? NUDGE_REPEAT_STEP : 1;
-  const moved = await moveSelectedItem(nudge.dx * multiplier, nudge.dy * multiplier);
+  const moved = await moveSelectedItem(
+    nudge.dx * multiplier,
+    nudge.dy * multiplier,
+    { renderPreview: !isRepeat }
+  );
   nudge.inFlight = false;
 
+  if (moved && isRepeat) {
+    nudge.needsPreview = true;
+  }
+
+  if (nudge.stopped) {
+    if (nudge.finalizeOnStop && nudge.needsPreview && selectedItemId) {
+      refreshCurrentPreview();
+    }
+    return false;
+  }
+
   if (!moved || activeNudge !== nudge || !selectedItemId) {
-    stopNudgeRepeat();
+    stopNudgeRepeat({ finalize: false });
     return false;
   }
   return true;
@@ -593,7 +660,10 @@ function startNudgeRepeat(button, event) {
     dx: Number(button.dataset.nudgeDx),
     dy: Number(button.dataset.nudgeDy),
     timer: null,
-    inFlight: false
+    inFlight: false,
+    needsPreview: false,
+    stopped: false,
+    finalizeOnStop: true
   };
   activeNudge = nudge;
 
@@ -649,7 +719,7 @@ deleteItemBtn.addEventListener("click", async () => {
   const data = await res.json();
   if (data.error) { alert(data.error); return; }
 
-  stopNudgeRepeat();
+  stopNudgeRepeat({ finalize: false });
   selectedItemId = null;
   pendingItem = null;
   hoverPoint = null;
@@ -671,7 +741,7 @@ clearBtn.addEventListener("click", async () => {
   const data = await res.json();
   if (data.error) { alert(data.error); return; }
 
-  stopNudgeRepeat();
+  stopNudgeRepeat({ finalize: false });
   pendingItem = null;
   hoverPoint = null;
   lastClick = null;
