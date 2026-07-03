@@ -1,4 +1,4 @@
-import base64, os, re, time, uuid
+import base64, math, os, re, time, uuid
 from pathlib import Path
 import fitz
 from flask import Flask, render_template, request, jsonify, send_file, make_response
@@ -22,6 +22,10 @@ def get_positive_int_env(name, default):
 MAX_UPLOAD_MB = get_positive_int_env("MAX_UPLOAD_MB", 20)
 MAX_PDF_PAGES = get_positive_int_env("MAX_PDF_PAGES", 20)
 FILE_TTL_SECONDS = get_positive_int_env("FILE_TTL_SECONDS", 6 * 60 * 60)
+MAX_TEXT_LENGTH = 1000
+MIN_FONT_SIZE = 1
+MAX_FONT_SIZE = 72
+FONT_SIZE_TRANSLATION = str.maketrans("０１２３４５６７８９．", "0123456789.")
 DOWNLOAD_FILENAME_RE = re.compile(
     r"^direct_result_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.pdf$",
     re.IGNORECASE,
@@ -219,6 +223,30 @@ def get_page_items_metadata(session, page_index):
         })
     return items
 
+def find_session_item(session, item_id):
+    for item in session["items"]:
+        if item.get("item_id") == item_id:
+            return item
+    return None
+
+def validate_item_text(value):
+    text = str(value or "")
+    if not text.strip():
+        raise ValueError("文字内容を入力してください。")
+    if len(text) > MAX_TEXT_LENGTH:
+        raise ValueError(f"文字内容は{MAX_TEXT_LENGTH}文字以内にしてください。")
+    return text
+
+def validate_font_size(value):
+    normalized_value = "" if value is None else str(value).strip().translate(FONT_SIZE_TRANSLATION)
+    try:
+        font_size = float(normalized_value)
+    except (TypeError, ValueError):
+        raise ValueError("文字サイズは数字で入力してください。")
+    if not math.isfinite(font_size) or font_size < MIN_FONT_SIZE or font_size > MAX_FONT_SIZE:
+        raise ValueError(f"文字サイズは{MIN_FONT_SIZE}〜{MAX_FONT_SIZE}の範囲で入力してください。")
+    return font_size
+
 def draw_item_to_pdf_page(page, item):
     lines = item.get("lines") or wrap_text(
         item["text"], item["font_size"], item.get("wrap_width", 9999)
@@ -334,14 +362,20 @@ def add_text():
     if not session:
         return jsonify({"error": "PDFを開き直してください。"}), 404
 
+    try:
+        text = validate_item_text(data.get("text"))
+        font_size = validate_font_size(data.get("font_size"))
+    except ValueError as exc:
+        return json_error(str(exc))
+
     page_index = clamp_page_index(data["page"], session["page_count"])
     item = {
         "item_id": str(uuid.uuid4()),
         "page": page_index,
-        "text": data["text"],
+        "text": text,
         "x": round(float(data["x"]), 2),
         "y": round(float(data["y"]), 2),
-        "font_size": float(data["font_size"]),
+        "font_size": font_size,
         "wrap_width": round(float(data["wrap_width"]), 2),
     }
     item["lines"] = wrap_text(item["text"], item["font_size"], item["wrap_width"])
@@ -434,6 +468,44 @@ def delete_item():
         "page_count": session["page_count"],
         "items_count": len(session["items"]),
         "deleted_item_id": item_id,
+        "items": get_page_items_metadata(session, page_index),
+        **preview_data,
+    })
+
+@app.route("/update_item", methods=["POST"])
+def update_item():
+    data = get_request_json()
+    session = get_session(data.get("session_id"))
+    if not session:
+        return jsonify({"error": "PDFを開き直してください。"}), 404
+
+    item_id = str(data.get("item_id", "")).strip()
+    if not item_id:
+        return json_error("編集する項目を選択してください。")
+
+    item = find_session_item(session, item_id)
+    if not item:
+        return json_error("選択項目が見つかりません。", 404)
+
+    try:
+        text = validate_item_text(data.get("text"))
+        font_size = validate_font_size(data.get("font_size"))
+    except ValueError as exc:
+        return json_error(str(exc))
+
+    item["text"] = text
+    item["font_size"] = font_size
+    item["lines"] = wrap_text(item["text"], item["font_size"], item.get("wrap_width", 9999))
+
+    page_index = clamp_page_index(data.get("page", item.get("page", 0)), session["page_count"])
+    preview_data = render_preview_image(
+        Path(session["pdf_path"]), page_index, session["items"], zoom=session["zoom"]
+    )
+    return jsonify({
+        "current_page": page_index,
+        "page_count": session["page_count"],
+        "items_count": len(session["items"]),
+        "updated_item_id": item_id,
         "items": get_page_items_metadata(session, page_index),
         **preview_data,
     })

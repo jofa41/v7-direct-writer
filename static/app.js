@@ -21,6 +21,7 @@ const floatingGuide = document.getElementById("floatingGuide");
 const prevBtn = document.getElementById("prevBtn");
 const nextBtn = document.getElementById("nextBtn");
 const undoBtn = document.getElementById("undoBtn");
+const editItemBtn = document.getElementById("editItemBtn");
 const deleteItemBtn = document.getElementById("deleteItemBtn");
 const cancelBtn = document.getElementById("cancelBtn");
 const clearBtn = document.getElementById("clearBtn");
@@ -49,14 +50,32 @@ function setIdleStatus() {
   }
 }
 
-function isValidFontSize(value) {
-  return /^[0-9]+(\.[0-9]+)?$/.test(value) && Number(value) > 0 && Number(value) <= 72;
+function normalizeFontSizeInput(value) {
+  return String(value || "")
+    .replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    .replace(/．/g, ".")
+    .trim();
+}
+
+function validateFontSizeInput(value) {
+  const normalized = normalizeFontSizeInput(value);
+  if (!/^-?[0-9]+(\.[0-9]+)?$/.test(normalized)) {
+    return { error: "文字サイズは数字で入力してください。" };
+  }
+
+  const fontSize = Number(normalized);
+  if (fontSize < 1 || fontSize > 72) {
+    return { error: "文字サイズは1〜72の範囲で入力してください。" };
+  }
+
+  return { value: fontSize };
 }
 
 function enableButtons() {
   prevBtn.disabled = !sessionId || currentPage <= 0 || mode === "waiting_end";
   nextBtn.disabled = !sessionId || currentPage >= pageCount - 1 || mode === "waiting_end";
   undoBtn.disabled = !sessionId || mode === "waiting_end";
+  editItemBtn.disabled = !sessionId || !selectedItemId || mode === "waiting_end";
   deleteItemBtn.disabled = !sessionId || !selectedItemId || mode === "waiting_end";
   cancelBtn.disabled = mode !== "waiting_end";
   clearBtn.disabled = !sessionId || mode === "waiting_end";
@@ -266,18 +285,18 @@ async function startNewTextInput(point) {
   let fontSize = null;
 
   while (fontSize === null) {
-    const rawFontSize = prompt("文字サイズを半角数字で入力してください", "10");
+    const rawFontSize = prompt("文字サイズを数字で入力してください", "10");
 
     // キャンセル時は、開始位置・文字入力も含めて今回の追加を中止
     if (rawFontSize === null) return;
 
-    const trimmed = rawFontSize.trim();
+    const validation = validateFontSizeInput(rawFontSize);
 
-    if (isValidFontSize(trimmed)) {
-      fontSize = parseFloat(trimmed);
-    } else {
-      alert("文字サイズは半角数字で入力してください。\n例：10");
+    if (validation.error) {
+      alert(validation.error);
       // ここで最初に戻らず、文字サイズ入力だけを再表示する
+    } else {
+      fontSize = validation.value;
     }
   }
 
@@ -427,6 +446,64 @@ undoBtn.addEventListener("click", async () => {
   }
   mode = "idle";
   updatePreview(data);
+});
+
+editItemBtn.addEventListener("click", async () => {
+  if (!selectedItemId) {
+    setStatus("編集する項目を選択してください");
+    return;
+  }
+
+  const selectedItem = getSelectedItem();
+  if (!selectedItem) {
+    selectedItemId = null;
+    enableButtons();
+    setIdleStatus();
+    return;
+  }
+
+  const text = prompt("選択項目の文字内容を編集してください", selectedItem.text || "");
+  if (text === null) return;
+  if (!text.trim()) {
+    alert("文字内容を入力してください。");
+    return;
+  }
+
+  let fontSize = null;
+  while (fontSize === null) {
+    const rawFontSize = prompt("選択項目の文字サイズを数字で入力してください", String(selectedItem.font_size || 10));
+    if (rawFontSize === null) return;
+
+    const validation = validateFontSizeInput(rawFontSize);
+    if (validation.error) {
+      alert(validation.error);
+    } else {
+      fontSize = validation.value;
+    }
+  }
+
+  const res = await fetch("/update_item", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      session_id: sessionId,
+      item_id: selectedItemId,
+      text,
+      font_size: fontSize,
+      page: currentPage
+    })
+  });
+
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+
+  selectedItemId = data.updated_item_id || selectedItemId;
+  pendingItem = null;
+  hoverPoint = null;
+  lastClick = null;
+  mode = "idle";
+  updatePreview(data);
+  setStatus("選択項目を更新しました");
 });
 
 deleteItemBtn.addEventListener("click", async () => {
