@@ -413,20 +413,31 @@ async function pasteCopiedItem(point) {
     return false;
   }
 
-  const res = await fetch("/paste_item", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      session_id: sessionId,
-      source_item_id: pasteSourceItemId,
-      page: currentPage,
-      x: point.x,
-      y: point.y
-    })
-  });
+  let data;
+  try {
+    const res = await fetch("/paste_item", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        session_id: sessionId,
+        source_item_id: pasteSourceItemId,
+        page: currentPage,
+        x: point.x,
+        y: point.y
+      })
+    });
+    data = await res.json();
+  } catch (error) {
+    resetPasteMode();
+    alert("貼り付けできませんでした。時間をおいて再度お試しください。");
+    return false;
+  }
 
-  const data = await res.json();
-  if (data.error) { alert(data.error); return false; }
+  if (data.error) {
+    resetPasteMode();
+    alert(data.error);
+    return false;
+  }
 
   pasteSourceItemId = null;
   pendingItem = null;

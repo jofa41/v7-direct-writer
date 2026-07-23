@@ -295,7 +295,7 @@ def validate_wrap_width(value, item, session):
         raise ValueError("折返し右端はページ内を指定してください。")
     return wrap_width
 
-def validate_paste_position(page_index, x_value, y_value, source_item, session):
+def validate_paste_position(page_index, x_value, y_value, session):
     try:
         x = float(x_value)
         y = float(y_value)
@@ -305,17 +305,8 @@ def validate_paste_position(page_index, x_value, y_value, source_item, session):
         raise ValueError("貼り付け位置が不正です。")
 
     page_rect = get_pdf_page_rect(Path(session["pdf_path"]), page_index)
-    line_count = max(len(source_item.get("lines") or []), 1)
-    line_height = float(source_item["font_size"]) * 1.25
-    bottom = y + max(line_count - 1, 0) * line_height
-    right = x + float(source_item["wrap_width"])
-
     if x < 0 or y < 0 or x > page_rect.width or y > page_rect.height:
         raise ValueError("貼り付け位置はページ内をクリックしてください。")
-    if right > page_rect.width:
-        raise ValueError("貼り付け位置が右端を超えています。")
-    if bottom > page_rect.height:
-        raise ValueError("貼り付け位置が下端を超えています。")
     return round(x, 2), round(y, 2)
 
 def draw_item_to_pdf_page(page, item):
@@ -486,7 +477,7 @@ def paste_item():
             source_item["text"], source_item["font_size"], source_item["wrap_width"]
         )
         source_item["lines"] = source_lines
-        x, y = validate_paste_position(page_index, data.get("x"), data.get("y"), source_item, session)
+        x, y = validate_paste_position(page_index, data.get("x"), data.get("y"), session)
     except ValueError as exc:
         return json_error(str(exc))
 
