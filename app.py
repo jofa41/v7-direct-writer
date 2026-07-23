@@ -265,6 +265,22 @@ def get_pdf_page_width(pdf_path, page_index):
     finally:
         doc.close()
 
+def get_pdf_page_rect(pdf_path, page_index):
+    doc = fitz.open(str(pdf_path))
+    try:
+        return fitz.Rect(doc[page_index].rect)
+    finally:
+        doc.close()
+
+def validate_page_index(value, page_count):
+    try:
+        page_index = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("ページ指定が不正です。")
+    if page_index < 0 or page_index >= page_count:
+        raise ValueError("ページ指定が不正です。")
+    return page_index
+
 def validate_wrap_width(value, item, session):
     try:
         wrap_width = float(value)
@@ -278,6 +294,29 @@ def validate_wrap_width(value, item, session):
     if wrap_width > max_width:
         raise ValueError("折返し右端はページ内を指定してください。")
     return wrap_width
+
+def validate_paste_position(page_index, x_value, y_value, source_item, session):
+    try:
+        x = float(x_value)
+        y = float(y_value)
+    except (TypeError, ValueError):
+        raise ValueError("貼り付け位置が不正です。")
+    if not math.isfinite(x) or not math.isfinite(y):
+        raise ValueError("貼り付け位置が不正です。")
+
+    page_rect = get_pdf_page_rect(Path(session["pdf_path"]), page_index)
+    line_count = max(len(source_item.get("lines") or []), 1)
+    line_height = float(source_item["font_size"]) * 1.25
+    bottom = y + max(line_count - 1, 0) * line_height
+    right = x + float(source_item["wrap_width"])
+
+    if x < 0 or y < 0 or x > page_rect.width or y > page_rect.height:
+        raise ValueError("貼り付け位置はページ内をクリックしてください。")
+    if right > page_rect.width:
+        raise ValueError("貼り付け位置が右端を超えています。")
+    if bottom > page_rect.height:
+        raise ValueError("貼り付け位置が下端を超えています。")
+    return round(x, 2), round(y, 2)
 
 def draw_item_to_pdf_page(page, item):
     lines = item.get("lines") or wrap_text(
@@ -421,6 +460,55 @@ def add_text():
         "page_count": session["page_count"],
         "items_count": len(session["items"]),
         "lines_count": len(item["lines"]),
+        "created_item_id": item["item_id"],
+        "items": get_page_items_metadata(session, item["page"]),
+        **preview_data,
+    })
+
+@app.route("/paste_item", methods=["POST"])
+def paste_item():
+    data = get_request_json()
+    session = get_session(data.get("session_id"))
+    if not session:
+        return jsonify({"error": "PDFを開き直してください。"}), 404
+
+    source_item_id = str(data.get("source_item_id", "")).strip()
+    if not source_item_id:
+        return json_error("コピー元の項目を選択してください。")
+
+    source_item = find_session_item(session, source_item_id)
+    if not source_item:
+        return json_error("コピー元の項目が見つかりません。", 404)
+
+    try:
+        page_index = validate_page_index(data.get("page"), session["page_count"])
+        source_lines = source_item.get("lines") or wrap_text(
+            source_item["text"], source_item["font_size"], source_item["wrap_width"]
+        )
+        source_item["lines"] = source_lines
+        x, y = validate_paste_position(page_index, data.get("x"), data.get("y"), source_item, session)
+    except ValueError as exc:
+        return json_error(str(exc))
+
+    item = {
+        "item_id": str(uuid.uuid4()),
+        "page": page_index,
+        "text": source_item["text"],
+        "x": x,
+        "y": y,
+        "font_size": source_item["font_size"],
+        "wrap_width": source_item["wrap_width"],
+    }
+    item["lines"] = wrap_text(item["text"], item["font_size"], item["wrap_width"])
+    session["items"].append(item)
+
+    preview_data = render_preview_image(
+        Path(session["pdf_path"]), item["page"], session["items"], zoom=session["zoom"]
+    )
+    return jsonify({
+        "current_page": item["page"],
+        "page_count": session["page_count"],
+        "items_count": len(session["items"]),
         "created_item_id": item["item_id"],
         "items": get_page_items_metadata(session, item["page"]),
         **preview_data,

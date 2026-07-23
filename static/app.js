@@ -11,6 +11,7 @@ let pageItems = [];
 let selectedItemId = null;
 let mode = "idle";
 let activeNudge = null;
+let pasteSourceItemId = null;
 
 const NUDGE_REPEAT_DELAY_MS = 250;
 const NUDGE_REPEAT_INTERVAL_MS = 80;
@@ -28,6 +29,7 @@ const nextBtn = document.getElementById("nextBtn");
 const undoBtn = document.getElementById("undoBtn");
 const editItemBtn = document.getElementById("editItemBtn");
 const wrapEditBtn = document.getElementById("wrapEditBtn");
+const copyItemBtn = document.getElementById("copyItemBtn");
 const deleteItemBtn = document.getElementById("deleteItemBtn");
 const nudgeButtons = Array.from(document.querySelectorAll(".nudgeBtn"));
 const cancelBtn = document.getElementById("cancelBtn");
@@ -79,13 +81,15 @@ function validateFontSizeInput(value) {
 }
 
 function enableButtons() {
-  const busyMode = mode === "waiting_end" || mode === "wrap_edit";
-  prevBtn.disabled = !sessionId || currentPage <= 0 || busyMode;
-  nextBtn.disabled = !sessionId || currentPage >= pageCount - 1 || busyMode;
+  const busyMode = mode === "waiting_end" || mode === "wrap_edit" || mode === "paste";
+  const navigationBusy = mode === "waiting_end" || mode === "wrap_edit";
+  prevBtn.disabled = !sessionId || currentPage <= 0 || navigationBusy;
+  nextBtn.disabled = !sessionId || currentPage >= pageCount - 1 || navigationBusy;
   undoBtn.disabled = !sessionId || busyMode;
   const selectedActionDisabled = !sessionId || !selectedItemId || busyMode;
   editItemBtn.disabled = selectedActionDisabled;
   wrapEditBtn.disabled = selectedActionDisabled;
+  copyItemBtn.disabled = selectedActionDisabled;
   deleteItemBtn.disabled = selectedActionDisabled;
   nudgeButtons.forEach(button => { button.disabled = selectedActionDisabled; });
   cancelBtn.disabled = !busyMode;
@@ -159,7 +163,7 @@ function updatePreview(data) {
   };
 
   enableButtons();
-  if (mode !== "waiting_end") {
+  if (mode === "idle") {
     hideFloatingGuide();
     setIdleStatus();
   }
@@ -321,6 +325,16 @@ function resetWrapEditMode() {
   setIdleStatus();
 }
 
+function resetPasteMode() {
+  pasteSourceItemId = null;
+  hoverPoint = null;
+  mode = "idle";
+  hideFloatingGuide();
+  enableButtons();
+  drawMarkers();
+  setIdleStatus();
+}
+
 function startWrapEditMode() {
   const selectedItem = getSelectedItem();
   if (!selectedItem) {
@@ -339,6 +353,27 @@ function startWrapEditMode() {
   enableButtons();
   showFloatingGuide("新しい右端位置をクリックしてください\nEsc：キャンセル");
   setStatus("折返し幅の右端位置をクリックしてください");
+}
+
+function startPasteMode() {
+  const selectedItem = getSelectedItem();
+  if (!selectedItem) {
+    selectedItemId = null;
+    enableButtons();
+    setStatus("コピーする項目を選択してください");
+    return;
+  }
+
+  stopNudgeRepeat({ finalize: false });
+  pendingItem = null;
+  hoverPoint = null;
+  lastClick = null;
+  pasteSourceItemId = selectedItem.item_id;
+  mode = "paste";
+  drawMarkers();
+  enableButtons();
+  showFloatingGuide("貼り付け位置をクリックしてください\nEsc：キャンセル");
+  setStatus("貼り付け位置をクリックしてください");
 }
 
 async function updateSelectedWrapWidth(wrapWidth) {
@@ -368,6 +403,39 @@ async function updateSelectedWrapWidth(wrapWidth) {
   mode = "idle";
   updatePreview(data);
   setStatus("折返し幅を更新しました");
+  return true;
+}
+
+async function pasteCopiedItem(point) {
+  if (!pasteSourceItemId) {
+    resetPasteMode();
+    setStatus("コピーする項目を選択してください");
+    return false;
+  }
+
+  const res = await fetch("/paste_item", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      session_id: sessionId,
+      source_item_id: pasteSourceItemId,
+      page: currentPage,
+      x: point.x,
+      y: point.y
+    })
+  });
+
+  const data = await res.json();
+  if (data.error) { alert(data.error); return false; }
+
+  pasteSourceItemId = null;
+  pendingItem = null;
+  hoverPoint = null;
+  lastClick = null;
+  mode = "idle";
+  selectedItemId = data.created_item_id || selectedItemId;
+  updatePreview(data);
+  setStatus("貼り付けました");
   return true;
 }
 
@@ -479,11 +547,13 @@ pdfFile.addEventListener("change", async () => {
   lastClick = null;
   pageItems = [];
   selectedItemId = null;
+  pasteSourceItemId = null;
   mode = "idle";
   updatePreview(data);
 });
 
 async function loadPage(page) {
+  const keepPasteMode = mode === "paste" && pasteSourceItemId;
   const res = await fetch("/preview", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
@@ -497,8 +567,13 @@ async function loadPage(page) {
   hoverPoint = null;
   lastClick = null;
   selectedItemId = null;
-  mode = "idle";
+  mode = keepPasteMode ? "paste" : "idle";
   updatePreview(data);
+  if (keepPasteMode) {
+    showFloatingGuide("貼り付け位置をクリックしてください\nEsc：キャンセル");
+    setStatus("貼り付け位置をクリックしてください");
+    enableButtons();
+  }
 }
 
 prevBtn.addEventListener("click", () => { if (currentPage > 0) loadPage(currentPage - 1); });
@@ -514,6 +589,11 @@ pdfImage.addEventListener("mousemove", (event) => {
 pdfImage.addEventListener("click", async (event) => {
   if (!sessionId) return;
   const point = getPdfPointFromClick(event);
+
+  if (mode === "paste") {
+    await pasteCopiedItem(point);
+    return;
+  }
 
   if (mode === "wrap_edit") {
     const selectedItem = getSelectedItem();
@@ -562,6 +642,13 @@ pdfImage.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("keydown", async (event) => {
+  if (mode === "paste" && event.key === "Escape") {
+    event.preventDefault();
+    resetPasteMode();
+    setStatus("貼り付けをキャンセルしました");
+    return;
+  }
+
   if (mode === "wrap_edit" && event.key === "Escape") {
     event.preventDefault();
     resetWrapEditMode();
@@ -585,7 +672,10 @@ document.addEventListener("keydown", async (event) => {
 });
 
 cancelBtn.addEventListener("click", () => {
-  if (mode === "wrap_edit") {
+  if (mode === "paste") {
+    resetPasteMode();
+    setStatus("貼り付けをキャンセルしました");
+  } else if (mode === "wrap_edit") {
     resetWrapEditMode();
     setStatus("幅編集をキャンセルしました");
   } else {
@@ -679,6 +769,15 @@ wrapEditBtn.addEventListener("click", () => {
   }
 
   startWrapEditMode();
+});
+
+copyItemBtn.addEventListener("click", () => {
+  if (!selectedItemId) {
+    setStatus("コピーする項目を選択してください");
+    return;
+  }
+
+  startPasteMode();
 });
 
 async function moveSelectedItem(dx, dy, options={}) {
