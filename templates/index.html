@@ -2,34 +2,49 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>v7 Direct Writer</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="app">
+  <div class="app is-normal">
     <header>
       <h1>v7 Direct Writer</h1>
       <p>開始位置をクリック、文字入力、折返し右端をクリック。迷わないPDF文字入力ツール。</p>
     </header>
 
-    <section class="toolbar">
-      <label class="fileButton">PDFを開く<input type="file" id="pdfFile" accept="application/pdf"></label>
-      <button id="prevBtn" disabled>前ページ</button>
-      <button id="nextBtn" disabled>次ページ</button>
-      <button id="undoBtn" disabled>最後の入力を取消</button>
-      <button id="editItemBtn" disabled>選択編集</button>
-      <button id="wrapEditBtn" disabled>幅編集</button>
-      <button id="copyItemBtn" disabled>コピー</button>
-      <button id="deleteItemBtn" disabled>選択削除</button>
-      <button class="nudgeBtn" data-nudge-dx="0" data-nudge-dy="-1" disabled>↑</button>
-      <button class="nudgeBtn" data-nudge-dx="0" data-nudge-dy="1" disabled>↓</button>
-      <button class="nudgeBtn" data-nudge-dx="-1" data-nudge-dy="0" disabled>←</button>
-      <button class="nudgeBtn" data-nudge-dx="1" data-nudge-dy="0" disabled>→</button>
-      <button id="cancelBtn" disabled>入力をキャンセル</button>
-      <button id="clearBtn" disabled>全削除</button>
-      <button id="exportBtn" disabled>PDF出力</button>
-      <span id="status">PDFを開いてください</span>
+    <section class="toolbar" aria-label="PDF編集操作">
+      <div class="topControls toolbarGroup">
+        <label class="fileButton">PDFを開く<input type="file" id="pdfFile" accept="application/pdf"></label>
+        <button id="prevBtn" disabled>前ページ</button>
+        <button id="nextBtn" disabled>次ページ</button>
+      </div>
+
+      <div class="normalControls toolbarGroup">
+        <button id="undoBtn" disabled><span class="desktopOnly">最後の入力を</span>取消</button>
+        <button id="clearBtn" disabled>全削除</button>
+        <button id="exportBtn" disabled>PDF出力</button>
+      </div>
+
+      <div class="selectionControls toolbarGroup">
+        <div class="selectionActions toolbarGroup">
+          <button id="editItemBtn" disabled><span class="desktopOnly">選択</span>編集</button>
+          <button id="wrapEditBtn" disabled>幅編集</button>
+          <button id="copyItemBtn" disabled>コピー</button>
+          <button id="deleteItemBtn" disabled><span class="desktopOnly">選択</span>削除</button>
+        </div>
+        <div class="nudgePad toolbarGroup" aria-label="選択項目を移動">
+          <button class="nudgeBtn nudgeUp" data-nudge-dx="0" data-nudge-dy="-1" disabled aria-label="上へ移動">↑</button>
+          <button class="nudgeBtn nudgeDown" data-nudge-dx="0" data-nudge-dy="1" disabled aria-label="下へ移動">↓</button>
+          <button class="nudgeBtn nudgeLeft" data-nudge-dx="-1" data-nudge-dy="0" disabled aria-label="左へ移動">←</button>
+          <button class="nudgeBtn nudgeRight" data-nudge-dx="1" data-nudge-dy="0" disabled aria-label="右へ移動">→</button>
+        </div>
+      </div>
+
+      <div class="busyControls toolbarGroup">
+        <button id="cancelBtn" disabled><span class="desktopOnly">入力を</span>キャンセル</button>
+        <span id="status">PDFを開いてください</span>
+      </div>
     </section>
 
     <div id="floatingGuide" class="floatingGuide hidden">
