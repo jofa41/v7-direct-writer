@@ -21,6 +21,7 @@ const pdfFile = document.getElementById("pdfFile");
 const pdfImage = document.getElementById("pdfImage");
 const markerCanvas = document.getElementById("markerCanvas");
 const viewer = document.getElementById("viewer");
+const appEl = document.querySelector(".app");
 const statusEl = document.getElementById("status");
 const floatingGuide = document.getElementById("floatingGuide");
 
@@ -95,7 +96,24 @@ function enableButtons() {
   cancelBtn.disabled = !busyMode;
   clearBtn.disabled = !sessionId || busyMode;
   exportBtn.disabled = !sessionId || busyMode;
+  syncUiState(busyMode);
 }
+
+function syncUiState(busyMode = mode === "waiting_end" || mode === "wrap_edit" || mode === "paste") {
+  const hasSelection = !busyMode && Boolean(sessionId && selectedItemId);
+  appEl.classList.toggle("is-normal", !busyMode && !hasSelection);
+  appEl.classList.toggle("has-selection", hasSelection);
+  appEl.classList.toggle("is-busy", busyMode);
+
+  const mobileStatuses = {
+    waiting_end: "右端位置を選択",
+    wrap_edit: "新しい右端位置を選択",
+    paste: "貼り付け位置を選択"
+  };
+  statusEl.dataset.mobileStatus = mobileStatuses[mode] || "";
+}
+
+enableButtons();
 
 async function refreshCurrentPreview() {
   if (!sessionId) return false;

@@ -4,12 +4,30 @@ header { padding: 18px 24px; background: #111827; color: white; }
 h1 { margin: 0; font-size: 22px; }
 header p { margin: 6px 0 0; font-size: 13px; opacity: 0.85; }
 .toolbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: white; border-bottom: 1px solid #d1d5db; box-shadow: 0 2px 8px rgba(0,0,0,0.05); flex-wrap: wrap; }
+.toolbarGroup { display: contents; }
 button, .fileButton { border: 1px solid #cbd5e1; background: white; color: #111827; border-radius: 8px; padding: 8px 12px; font-size: 14px; cursor: pointer; transition: 0.15s ease; }
 button:hover:not(:disabled), .fileButton:hover { background: #f1f5f9; }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 .nudgeBtn { user-select: none; -webkit-user-select: none; touch-action: none; }
 .fileButton input { display: none; }
 #status { margin-left: 10px; font-size: 13px; color: #374151; }
+#pdfFile { order: 0; }
+.fileButton { order: 0; }
+#prevBtn { order: 1; }
+#nextBtn { order: 2; }
+#undoBtn { order: 3; }
+#editItemBtn { order: 4; }
+#wrapEditBtn { order: 5; }
+#copyItemBtn { order: 6; }
+#deleteItemBtn { order: 7; }
+.nudgeUp { order: 8; }
+.nudgeDown { order: 9; }
+.nudgeLeft { order: 10; }
+.nudgeRight { order: 11; }
+#cancelBtn { order: 12; }
+#clearBtn { order: 13; }
+#exportBtn { order: 14; }
+#status { order: 15; }
 .viewerWrap { height: calc(100vh - 120px); overflow: auto; padding: 24px; }
 .viewer { position: relative; display: inline-block; background: #e5e7eb; box-shadow: 0 8px 30px rgba(0,0,0,0.18); }
 
@@ -51,86 +69,256 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .hidden { display: none; }
 
-/* v7.1 mobile readability patch */
 @media (max-width: 768px) {
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: minmax(86px, 1.25fr) auto minmax(72px, 0.9fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    width: 100%;
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+    background: #f4f5f7;
+  }
+
+  @supports (height: 100dvh) {
+    .app {
+      height: 100dvh;
+    }
+  }
+
   header {
-    padding: 22px 18px;
+    grid-column: 1 / -1;
+    grid-row: 1;
+    z-index: 1;
+    min-width: 0;
+    padding: 8px 10px 54px;
   }
 
   h1 {
-    font-size: 30px;
-    line-height: 1.2;
+    font-size: 18px;
+    line-height: 1.25;
   }
 
   header p {
-    margin-top: 10px;
-    font-size: 16px;
-    line-height: 1.6;
+    display: none;
   }
 
   .toolbar {
-    gap: 10px;
-    padding: 12px;
-    align-items: stretch;
+    display: contents;
+  }
+
+  .topControls,
+  .busyControls {
+    display: contents;
   }
 
   button,
   .fileButton {
-    min-height: 48px;
-    padding: 12px 14px;
-    font-size: 16px;
-    border-radius: 12px;
+    width: auto;
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px 9px;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  .desktopOnly {
+    display: none;
+  }
+
+  .fileButton,
+  #prevBtn,
+  #nextBtn,
+  #status {
+    grid-row: 1;
+    z-index: 2;
+    align-self: end;
+    margin-top: 38px;
+    margin-bottom: 7px;
+  }
+
+  .fileButton {
+    grid-column: 1;
+    margin-left: 8px;
+  }
+
+  #prevBtn {
+    grid-column: 2;
+    margin-left: 6px;
   }
 
   #status {
+    grid-column: 3;
+    align-self: center;
+    width: auto;
+    min-width: 0;
+    margin-right: 0;
+    margin-left: 6px;
+    padding: 0 6px;
+    overflow: hidden;
+    color: rgba(255,255,255,0.9);
+    font-size: 13px;
+    line-height: 44px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #nextBtn {
+    grid-column: 4;
+    margin-right: 8px;
+    margin-left: 6px;
+  }
+
+  .normalControls,
+  .selectionControls {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    z-index: 20;
+    min-width: 0;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    background: white;
+    border-top: 1px solid #d1d5db;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
+  }
+
+  .normalControls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .selectionControls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 140px;
+    gap: 8px;
+  }
+
+  .selectionActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    min-width: 0;
+  }
+
+  #copyItemBtn {
+    order: 5;
+  }
+
+  #wrapEditBtn {
+    order: 6;
+  }
+
+  .nudgePad {
+    display: grid;
+    grid-template-columns: repeat(3, 44px);
+    grid-template-rows: repeat(2, 44px);
+    gap: 4px;
+    width: 140px;
+  }
+
+  .nudgePad .nudgeBtn {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    font-size: 18px;
+  }
+
+  .nudgeUp {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .nudgeLeft {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .nudgeDown {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .nudgeRight {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  .app.is-busy .busyControls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-row: 3;
+    z-index: 20;
+    grid-column: 1 / -1;
+    gap: 8px;
+    padding: 8px 10px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    background: white;
+    border-top: 1px solid #d1d5db;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
+  }
+
+  .busyControls #cancelBtn {
     width: 100%;
-    margin-left: 0;
-    padding: 8px 2px 2px;
-    font-size: 15px;
-    line-height: 1.5;
+  }
+
+  .app.is-busy #status {
+    grid-column: 2;
+    grid-row: 1;
+    z-index: 21;
+    align-self: stretch;
+    margin: 0;
+    padding: 0 6px;
+    color: #374151;
+    font-size: 0;
+    line-height: normal;
+    text-align: left;
+  }
+
+  .app.is-busy #status::after {
+    display: block;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 44px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    content: attr(data-mobile-status);
+  }
+
+  .app:not(.is-normal) .normalControls,
+  .app:not(.has-selection) .selectionControls,
+  .app:not(.is-busy) #cancelBtn {
+    display: none;
   }
 
   .viewerWrap {
-    height: calc(100vh - 190px);
-    padding: 14px;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    padding: 10px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .floatingGuide {
-    top: 110px;
-    width: calc(100vw - 32px);
-    min-width: auto;
-    padding: 20px 18px;
-    font-size: 18px;
-    line-height: 1.6;
-  }
-}
-
-@media (max-width: 480px) {
-  h1 {
-    font-size: 28px;
+    display: none;
   }
 
-  header p {
-    font-size: 15px;
-  }
-
-  button,
-  .fileButton {
-    width: calc(50% - 5px);
-    text-align: center;
-    justify-content: center;
-  }
-
-  #exportBtn,
-  #clearBtn,
-  #undoBtn,
-  #cancelBtn {
-    width: calc(50% - 5px);
-  }
-
-  #status {
-    font-size: 14px;
-  }
 }
 
 /* v7.2 export completion toast */
@@ -162,10 +350,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 @media (max-width: 768px) {
   .exportToast {
-    bottom: 18px;
+    bottom: calc(68px + env(safe-area-inset-bottom));
     width: calc(100vw - 28px);
-    font-size: 16px;
-    padding: 16px 18px;
+    font-size: 15px;
+    padding: 14px 16px;
   }
 }
 
